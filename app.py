@@ -80,13 +80,13 @@ def build_context(results):
 
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
-st.warning("⚠️ **SIMULATION ONLY.** DO NOT USE FOR REAL FLIGHT OPERATIONS.")
+st.warning("⚠️ **To be used only to find quick referene to DDG ")
 
 # Load backend
 embed_model, index, metadatas, client = load_backend()
 
 # Input section
-query = st.text_input("Enter Pilot Discrepancy:", 
+query = st.text_input("Enter Discrepancy:", 
                       placeholder="E.g. Forward cargo air conditioning exhaust fan inoperative",
                       key="query_input")
 
@@ -144,3 +144,4 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
