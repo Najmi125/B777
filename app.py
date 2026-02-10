@@ -8,7 +8,7 @@ from groq import Groq
 # ---------------- 1. CONFIGURATION ----------------
 st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon="✈️")
 
-# File Safety Check (Great addition!)
+# File Safety Check
 required_files = ["ddg_faiss.index", "ddg_metadata.json"]
 missing_files = [f for f in required_files if not os.path.exists(f)]
 if missing_files:
@@ -30,7 +30,6 @@ Rules:
 - Always include references (DDG item number, ATA, page numbers).
 - Use clear, operational aviation language."""
 
-# I put this back - the AI needs it!
 REQUIRED_OUTPUT_FORMAT = """
 **REFERENCES:**
 * DDG Item: <item number>
@@ -60,12 +59,24 @@ def load_backend():
     client = Groq(api_key=api_key)
     return embed_model, index, metadatas, client
 
+# --- ⚠️ THIS IS THE FIXED FUNCTION ---
 def build_context(results):
     blocks = []
-    for item in results:
-        block = f"DDG ITEM: {item['item_full']}\nATA: {item['ata']}\nText: {item['text']}"
+    for i, item in enumerate(results):
+        # Fallback logic: Try to find the text field
+        # It checks for 'text', then 'content', then 'description', etc.
+        text_content = item.get('text') or item.get('content') or item.get('page_content') or item.get('description')
+        
+        # If still None, print the keys to the screen so we can debug!
+        if text_content is None:
+            st.error(f"❌ Error in Item {i}: Could not find text field.")
+            st.write("Available keys in your data:", item.keys())
+            text_content = "DATA ERROR - NO TEXT FOUND"
+
+        block = f"DDG ITEM: {item.get('item_full', 'N/A')}\nATA: {item.get('ata', 'N/A')}\nText: {text_content}"
         blocks.append(block)
     return "\n\n---\n\n".join(blocks)
+# -------------------------------------
 
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
@@ -74,7 +85,7 @@ st.warning("⚠️ **SIMULATION ONLY.** DO NOT USE FOR REAL FLIGHT OPERATIONS.")
 # Load backend
 embed_model, index, metadatas, client = load_backend()
 
-# Input section with key for clearing
+# Input section
 query = st.text_input("Enter Pilot Discrepancy:", 
                       placeholder="E.g. Forward cargo air conditioning exhaust fan inoperative",
                       key="query_input")
@@ -87,7 +98,7 @@ with col2:
 
 # Clear Logic
 if clear_clicked:
-    st.session_state.query_input = "" # This actually wipes the text box
+    st.session_state.query_input = "" 
     st.session_state.processed = False
     st.rerun()
 
