@@ -77,7 +77,16 @@ Related Items: {item.get('related_items', 'None')}
 
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
-st.write("Find quick reference to DDG item/page")
+st.markdown("**Find quick reference to DDG item/page.**")
+
+st.markdown(
+    """
+**NOTE:** This is a prototype app for limited use.  
+If you find it slow or see a *'Rate limit'* error,  
+please WhatsApp **+92 337 1244809**.
+"""
+)
+
 
 # Load backend
 embed_model, index, metadatas, client = load_backend()
@@ -141,4 +150,5 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
 
