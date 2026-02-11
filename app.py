@@ -83,7 +83,7 @@ st.write("Find quick reference to DDG item/page")
 embed_model, index, metadatas, client = load_backend()
 
 # Input section
-query = st.text_input("Enter Pilot Discrepancy:", 
+query = st.text_input("Enter Discrepancy:", 
                       placeholder="E.g. Forward cargo air conditioning exhaust fan inoperative",
                       key="query_input")
 
@@ -141,3 +141,4 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
