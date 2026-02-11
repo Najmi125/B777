@@ -25,18 +25,21 @@ if 'query_input' not in st.session_state:
 # ---------------- 2. PROMPTS ----------------
 SYSTEM_PROMPT = """You are a Boeing 777 Dispatch Deviation Guide (DDG) assistant.
 Rules:
-- Answer ONLY using the provided DDG excerpts.
-- Do NOT invent procedures.
-- Always include references (DDG item number, ATA, page numbers).
-- Use clear, operational aviation language."""
+- Answer using the provided DDG titles and metadata.
+- NOTE: The full text content is currently missing, so provide the best answer based on the Titles and Item Numbers available.
+- Always include references (DDG item number, ATA).
+- DERIVE the MEL Item from the DDG Item number by removing the prefix (e.g., "2.") and suffix. 
+  (Example: If DDG Item is "2.46-11-02.2", the MEL Item is "46-11-02").
+"""
 
 REQUIRED_OUTPUT_FORMAT = """
 **REFERENCES:**
 * DDG Item: <item number>
-* Pages: <page range>
+* ATA: <ata chapter>
+* MEL Item: <item number (e.g. 46-11-02)>
 
-**DESCRIPTION:**
-<Plain-English dispatch explanation>
+**GUIDANCE:**
+<Explanation based on the available titles>
 """
 
 # ---------------- 3. BACKEND ----------------
@@ -59,40 +62,34 @@ def load_backend():
     client = Groq(api_key=api_key)
     return embed_model, index, metadatas, client
 
-# --- ⚠️ THIS IS THE FIXED FUNCTION ---
 def build_context(results):
     blocks = []
-    for i, item in enumerate(results):
-        # Fallback logic: Try to find the text field
-        # It checks for 'text', then 'content', then 'description', etc.
-        text_content = item.get('text') or item.get('content') or item.get('page_content') or item.get('description')
-        
-        # If still None, print the keys to the screen so we can debug!
-        if text_content is None:
-            st.error(f"❌ Error in Item {i}: Could not find text field.")
-            st.write("Available keys in your data:", item.keys())
-            text_content = "DATA ERROR - NO TEXT FOUND"
-
-        block = f"DDG ITEM: {item.get('item_full', 'N/A')}\nATA: {item.get('ata', 'N/A')}\nText: {text_content}"
+    for item in results:
+        block = f"""
+DDG ITEM: {item.get('item_full', 'N/A')}
+ATA: {item.get('ata', 'N/A')}
+System: {item.get('system', 'N/A')}
+Title: {item.get('title', 'N/A')}
+Related Items: {item.get('related_items', 'None')}
+"""
         blocks.append(block)
     return "\n\n---\n\n".join(blocks)
-# -------------------------------------
 
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
-st.warning("⚠️ **To be used only to find quick referene to DDG ")
+st.write("Find quick reference to DDG item/page")
 
 # Load backend
 embed_model, index, metadatas, client = load_backend()
 
 # Input section
-query = st.text_input("Enter Discrepancy:", 
+query = st.text_input("Enter Pilot Discrepancy:", 
                       placeholder="E.g. Forward cargo air conditioning exhaust fan inoperative",
                       key="query_input")
 
 col1, col2 = st.columns([1, 1])
 with col1:
-    search_clicked = st.button("Search Manuals", type="primary", use_container_width=True)
+    search_clicked = st.button("click to search DDG", type="primary", use_container_width=True)
 with col2:
     clear_clicked = st.button("Clear", use_container_width=True)
 
@@ -122,7 +119,7 @@ Answer using the REQUIRED OUTPUT FORMAT:
         
         try:
             completion = client.chat.completions.create(
-                model="llama3-8b-8192",
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": USER_PROMPT}
@@ -144,4 +141,3 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
-
