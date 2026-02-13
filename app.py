@@ -8,6 +8,16 @@ from groq import Groq
 # ---------------- 1. CONFIGURATION ----------------
 st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon="✈️")
 
+# Hide Profile Photo & Footer
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
 # File Safety Check
 required_files = ["ddg_faiss.index", "ddg_metadata.json"]
 missing_files = [f for f in required_files if not os.path.exists(f)]
@@ -25,11 +35,11 @@ if 'query_input' not in st.session_state:
 # ---------------- 2. PROMPTS ----------------
 SYSTEM_PROMPT = """You are a Boeing 777 Dispatch Deviation Guide (DDG) assistant.
 Rules:
-- Answer using the provided DDG titles and metadata.
-- NOTE: The full text content is currently missing, so provide the best answer based on the Titles and Item Numbers available.
-- Always include references (DDG item number, ATA).
+- You are strictly a formatting engine. 
+- You must output the metadata and the EXACT text provided in the context.
 - DERIVE the MEL Item from the DDG Item number by removing the prefix (e.g., "2.") and suffix. 
   (Example: If DDG Item is "2.46-11-02.2", the MEL Item is "46-11-02").
+- Do NOT summarize the "Page Text". Output it exactly as provided in the context.
 """
 
 REQUIRED_OUTPUT_FORMAT = """
@@ -38,8 +48,8 @@ REQUIRED_OUTPUT_FORMAT = """
 * ATA: <ata chapter>
 * MEL Item: <item number (e.g. 46-11-02)>
 
-**GUIDANCE:**
-<Explanation based on the available titles>
+**Page text**
+<Insert the exact text content from the context here. Do not summarize.>
 """
 
 # ---------------- 3. BACKEND ----------------
@@ -65,34 +75,40 @@ def load_backend():
 def build_context(results):
     blocks = []
     for item in results:
+        # Tries to find the text. If missing, shows a placeholder.
+        raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING - UPDATE JSON]]"
+        
         block = f"""
 DDG ITEM: {item.get('item_full', 'N/A')}
 ATA: {item.get('ata', 'N/A')}
-System: {item.get('system', 'N/A')}
 Title: {item.get('title', 'N/A')}
-Related Items: {item.get('related_items', 'None')}
+TEXT CONTENT:
+{raw_text}
 """
         blocks.append(block)
     return "\n\n---\n\n".join(blocks)
 
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
-st.markdown("**Find quick reference to DDG item/page.**")
 
-st.markdown(
-    """
-**NOTE:** This is a prototype app for limited use.  
-If you find it slow or see a *'Rate limit'* error,  
-please WhatsApp **+92 337 1244809**.
-"""
-)
+# --- UPDATED TEXT BLOCK ---
+st.markdown("""
+Find quick reference to DDG item/page.
 
+**CAUTION**: For more accurate results, input text should be as close to DDG language as possible.  
+*e.g. FCAC Flow Regulating Valve | Autothrottle Servo Motors*
+
+**NOTE**: This is a prototype app for limited use.  
+If you find it slow or see a 'Rate limit' error,  
+please WhatsApp +92 337 1244809.
+""")
+# --------------------------
 
 # Load backend
 embed_model, index, metadatas, client = load_backend()
 
 # Input section
-query = st.text_input("Enter Discrepancy:", 
+query = st.text_input("Enter Pilot Discrepancy:", 
                       placeholder="E.g. Forward cargo air conditioning exhaust fan inoperative",
                       key="query_input")
 
@@ -134,7 +150,7 @@ Answer using the REQUIRED OUTPUT FORMAT:
                     {"role": "user", "content": USER_PROMPT}
                 ],
                 temperature=0.0,
-                max_tokens=500
+                max_tokens=800
             )
             
             st.markdown("### ✅ Dispatch Guidance")
@@ -150,5 +166,3 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
-
-
