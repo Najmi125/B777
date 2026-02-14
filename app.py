@@ -8,7 +8,6 @@ from groq import Groq
 # ---------------- 1. CONFIGURATION ----------------
 st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon="✈️")
 
-# Hide Profile Photo & Footer
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -23,10 +22,8 @@ required_files = ["ddg_faiss.index", "ddg_metadata.json"]
 missing_files = [f for f in required_files if not os.path.exists(f)]
 if missing_files:
     st.error(f"❌ Missing required files: {', '.join(missing_files)}")
-    st.info("Please ensure these files are uploaded to your GitHub repository.")
     st.stop()
 
-# Initialize Session State
 if 'processed' not in st.session_state:
     st.session_state.processed = False
 if 'query_input' not in st.session_state:
@@ -35,21 +32,19 @@ if 'query_input' not in st.session_state:
 # ---------------- 2. PROMPTS ----------------
 SYSTEM_PROMPT = """You are a Boeing 777 Dispatch Deviation Guide (DDG) assistant.
 Rules:
-- You are strictly a formatting engine. 
-- You must output the metadata and the EXACT text provided in the context.
-- DERIVE the MEL Item from the DDG Item number by removing the prefix (e.g., "2.") and suffix. 
-  (Example: If DDG Item is "2.46-11-02.2", the MEL Item is "46-11-02").
-- Do NOT summarize the "Page Text". Output it exactly as provided in the context.
+- You are strictly a formatting engine for metadata.
+- DERIVE the MEL Item from the DDG Item number by removing the prefix (e.g., "2.") and suffix.
+- Do NOT output the page text. Only output the References.
 """
 
+# ⚠️ UPDATED FORMAT
 REQUIRED_OUTPUT_FORMAT = """
 **REFERENCES:**
-* DDG Item: <item number>
+* DDG Item: <Top Match Item Number>
 * ATA: <ata chapter>
-* MEL Item: <item number (e.g. 46-11-02)>
+* MEL Item: <Top Match MEL number (e.g. 46-11-02)>
 
-**Page text**
-<Insert the exact text content from the context here. Do not summarize.>
+If above DDG item isn't correct, check <Second Match Item Number>
 """
 
 # ---------------- 3. BACKEND ----------------
@@ -57,7 +52,7 @@ REQUIRED_OUTPUT_FORMAT = """
 def load_backend():
     api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
     if not api_key:
-        st.error("❌ Groq API key not found. Check Streamlit Secrets.")
+        st.error("❌ Groq API key not found.")
         st.stop()
     
     try:
@@ -75,9 +70,7 @@ def load_backend():
 def build_context(results):
     blocks = []
     for item in results:
-        # Tries to find the text. If missing, shows a placeholder.
         raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING - UPDATE JSON]]"
-        
         block = f"""
 DDG ITEM: {item.get('item_full', 'N/A')}
 ATA: {item.get('ata', 'N/A')}
@@ -91,7 +84,6 @@ TEXT CONTENT:
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
 
-# --- UPDATED TEXT BLOCK ---
 st.markdown("""
 Find quick reference to DDG item/page.
 
@@ -99,15 +91,12 @@ Find quick reference to DDG item/page.
 *e.g. FCAC Flow Regulating Valve | Autothrottle Servo Motors*
 
 **NOTE**: This is a prototype app for limited use.  
-If slow or a 'Rate limit' error,  
+If slow or error msgs such as 'Rate limit',  
 please WhatsApp +92 337 1244809.
 """)
-# --------------------------
 
-# Load backend
 embed_model, index, metadatas, client = load_backend()
 
-# Input section
 query = st.text_input("Enter Discrepancy:", 
                       placeholder="e.g. Forward cargo air conditioning exhaust fan",
                       key="query_input")
@@ -118,25 +107,34 @@ with col1:
 with col2:
     clear_clicked = st.button("Clear", use_container_width=True)
 
-# Clear Logic
 if clear_clicked:
     st.session_state.query_input = "" 
     st.session_state.processed = False
     st.rerun()
 
-# Search Logic
 if search_clicked and query:
     with st.spinner("Searching DDG..."):
-        # Search
         q_emb = embed_model.encode([query], normalize_embeddings=True)
         scores, indices = index.search(q_emb, k=3)
         results = [metadatas[idx] for idx in indices[0]]
         context_text = build_context(results)
         
-        # Prompt
-        USER_PROMPT = f"""Pilot discrepancy: "{query}"
+        # --- DATA EXTRACTION FOR PROMPT ---
+        # 1. Get Top Match Data
+        top_item_num = results[0].get('item_full', 'N/A')
+        top_match_text = results[0].get('text') or results[0].get('content') or "[[TEXT MISSING]]"
         
-Context:
+        # 2. Get Second Match Data (Safety check in case only 1 result found)
+        second_item_num = results[1].get('item_full', 'N/A') if len(results) > 1 else "None"
+
+        # --- UPDATED USER PROMPT ---
+        # We explicitly tell the AI which item is #1 and which is #2
+        USER_PROMPT = f"""Pilot discrepancy: "{query}"
+
+Top Match Item Number: {top_item_num}
+Second Match Item Number: {second_item_num}
+
+Context Data:
 {context_text}
 
 Answer using the REQUIRED OUTPUT FORMAT:
@@ -150,13 +148,19 @@ Answer using the REQUIRED OUTPUT FORMAT:
                     {"role": "user", "content": USER_PROMPT}
                 ],
                 temperature=0.0,
-                max_tokens=800
+                max_tokens=300
             )
             
             st.markdown("### ✅ Dispatch Guidance")
+            
+            # 1. Print AI Output (References + Second Item check)
             st.markdown(completion.choices[0].message.content)
             
-            with st.expander("Show Retrieved Context"):
+            # 2. Print RAW Text of TOP MATCH (Manually)
+            st.markdown("**Page text**")
+            st.text(top_match_text)
+            
+            with st.expander("See other potential matches"):
                 st.text(context_text)
                 
             st.session_state.processed = True
@@ -166,4 +170,3 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
-
