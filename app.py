@@ -99,7 +99,7 @@ Find quick reference to DDG item/page.
 *e.g. FCAC Flow Regulating Valve | Autothrottle Servo Motors*
 
 **NOTE**: This is a prototype app for limited use.  
-If you find it slow or see a 'Rate limit' error,  
+If slow or a 'Rate limit' error,  
 please WhatsApp +92 337 1244809.
 """)
 # --------------------------
@@ -108,8 +108,8 @@ please WhatsApp +92 337 1244809.
 embed_model, index, metadatas, client = load_backend()
 
 # Input section
-query = st.text_input("Enter Pilot Discrepancy:", 
-                      placeholder="E.g. Forward cargo air conditioning exhaust fan inoperative",
+query = st.text_input("Enter Discrepancy:", 
+                      placeholder="e.g. Forward cargo air conditioning exhaust fan",
                       key="query_input")
 
 col1, col2 = st.columns([1, 1])
@@ -166,3 +166,4 @@ Answer using the REQUIRED OUTPUT FORMAT:
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
