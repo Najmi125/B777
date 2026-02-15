@@ -95,9 +95,10 @@ st.title("✈️ B777 DDG Assistant")
 
 st.markdown("""
 Find quick reference to DDG item/page.
+DDG page text shows best three [OPTION]s
 
 **CAUTION**: For more accurate results, input text should be as close to DDG language as possible.  
-*e.g. FCAC Flow Regulating Valve | Autothrottle Servo Motors*
+try different wordings if wrong answer.
 
 **NOTE**: This is a prototype app for limited use.  
 If slow or error msgs such as 'Rate limit',  
@@ -195,3 +196,4 @@ Return ONLY the JSON with the best_index.
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
