@@ -9,8 +9,6 @@ from groq import Groq
 st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon="✈️")
 
 # --- CSS STYLES ---
-# 1. Hide Profile/Footer
-# 2. Hide "Press Enter to apply" instruction
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -35,13 +33,18 @@ if missing_files:
     st.error(f"❌ Missing required files: {', '.join(missing_files)}")
     st.stop()
 
+# Initialize Session State
 if 'processed' not in st.session_state:
     st.session_state.processed = False
 if 'query_input' not in st.session_state:
     st.session_state.query_input = ""
 
+# --- CALLBACK TO FIX CLEAR BUTTON ERROR ---
+def clear_text():
+    st.session_state.query_input = ""
+    st.session_state.processed = False
+
 # ---------------- 2. PROMPTS ----------------
-# We ask the AI to output JSON so we can parse it reliably in Python
 SYSTEM_PROMPT = """You are a Boeing 777 technical analyzer.
 Your ONLY job is to select the best match from the provided candidates.
 Output valid JSON only. Format: {"best_index": <integer_index>}
@@ -68,28 +71,22 @@ def load_backend():
     return embed_model, index, metadatas, client
 
 def build_candidates_string(results):
-    # This string is for the AI to read and judge
     blocks = []
     for i, item in enumerate(results):
-        raw_text = item.get('text') or item.get('content') or ""
-        # We give the AI the index number [0], [1], etc.
         block = f"""
 [INDEX {i}]
 Item: {item.get('item_full', 'N/A')}
 Title: {item.get('title', 'N/A')}
-Text: {raw_text[:200]}... (snippet)
 """
         blocks.append(block)
     return "\n".join(blocks)
 
 def get_mel_string(ddg_item):
-    # Python Logic to strip prefix/suffix: 2.36-21-01.1 -> 36-21-01
     try:
-        # Split by dots, take the middle parts
         parts = ddg_item.split('.')
         if len(parts) >= 3:
-            return parts[1] # Returns the middle section
-        return ddg_item # Fallback
+            return parts[1] 
+        return ddg_item
     except:
         return ddg_item
 
@@ -109,6 +106,7 @@ please WhatsApp +92 337 1244809.
 
 embed_model, index, metadatas, client = load_backend()
 
+# Input Box
 query = st.text_input("Enter Discrepancy:", 
                       placeholder="e.g. Forward cargo air conditioning exhaust fan inoperative",
                       key="query_input")
@@ -117,18 +115,14 @@ col1, col2 = st.columns([1, 1])
 with col1:
     search_clicked = st.button("click to search DDG", type="primary", use_container_width=True)
 with col2:
-    clear_clicked = st.button("Clear", use_container_width=True)
-
-if clear_clicked:
-    st.session_state.query_input = "" 
-    st.session_state.processed = False
-    st.rerun()
+    # Callback handles clearing safely
+    st.button("Clear", use_container_width=True, on_click=clear_text)
 
 if search_clicked and query:
     with st.spinner("Searching DDG..."):
         # 1. Search Logic
         q_emb = embed_model.encode([query], normalize_embeddings=True)
-        # Get top 6 to allow AI to choose between similar items (Pressure vs Temp)
+        # We fetch 6 candidates for the AI to judge
         scores, indices = index.search(q_emb, k=6) 
         results = [metadatas[idx] for idx in indices[0]]
         
@@ -145,7 +139,6 @@ Return ONLY the JSON with the best_index.
 """
         
         try:
-            # We use JSON mode to ensure clean integer output
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -160,21 +153,16 @@ Return ONLY the JSON with the best_index.
             # 4. Parse AI Response
             response_data = json.loads(completion.choices[0].message.content)
             best_index = int(response_data.get("best_index", 0))
-            
-            # Safety check: Ensure index is valid
             if best_index < 0 or best_index >= len(results):
                 best_index = 0
             
-            # 5. Extract Data using Python (Not AI)
+            # 5. Extract Best Match Data
             selected_item = results[best_index]
             ddg_num = selected_item.get('item_full', 'N/A')
             ata_num = selected_item.get('ata', 'N/A')
             mel_num = get_mel_string(ddg_num)
             
-            # Get the EXACT Raw text from your JSON
-            raw_text_display = selected_item.get('text') or selected_item.get('content') or "[[TEXT MISSING IN JSON]]"
-            
-            # 6. Display Output
+            # 6. Display References (AI Selection)
             st.markdown("### ✅ Dispatch Guidance")
             
             st.markdown(f"""
@@ -184,8 +172,21 @@ Return ONLY the JSON with the best_index.
 * MEL Item: {mel_num}
 """)
             
+            # 7. Display RAW Text (Top 3 Options)
             st.markdown("## DDG page text")
-            st.text(raw_text_display) # <--- This prints exact raw text
+            
+            # Loop through the top 3 results from FAISS
+            # The one selected by AI might be Option 1, 2, or 3.
+            for i in range(min(3, len(results))):
+                item = results[i]
+                raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING IN JSON]]"
+                
+                # Highlight if this was the AI's choice
+                match_label = " (AI SELECTED MATCH)" if i == best_index else ""
+                
+                st.markdown(f"**[OPTION {i+1}] - {item.get('item_full', 'N/A')}{match_label}**")
+                st.text(raw_text)
+                st.markdown("---")
             
             st.session_state.processed = True
             
