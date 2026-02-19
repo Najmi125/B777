@@ -174,4 +174,43 @@ Return ONLY the JSON with the best_index.
             # 4. Parse AI Response
             response_data = json.loads(completion.choices[0].message.content)
             best_index = int(response_data.get("best_index", 0))
+            
+            # FIX: Properly indented safety check
             if best_index < 0 or best_index >= len(results):
+                best_index = 0
+            
+            # 5. Extract Data
+            selected_item = results[best_index]
+            ddg_num = selected_item.get('item_full', 'N/A')
+            ata_num = selected_item.get('ata', 'N/A')
+            mel_num = get_mel_string(ddg_num)
+            
+            # 6. Display Output
+            st.markdown("### ✅ Dispatch Guidance")
+            
+            st.markdown(f"""
+**REFERENCES:**
+* DDG Item: {ddg_num}
+* ATA: {ata_num}
+* MEL Item: {mel_num}
+""")
+            
+            st.markdown("## DDG page text")
+            
+            # Loop through the top 3 results
+            for i in range(min(3, len(results))):
+                item = results[i]
+                raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING IN JSON]]"
+                match_label = " (AI SELECTED MATCH)" if i == best_index else ""
+                
+                st.markdown(f"**[OPTION {i+1}] - {item.get('item_full', 'N/A')}{match_label}**")
+                st.text(raw_text)
+                st.markdown("---")
+            
+            st.session_state.processed = True
+            
+        except Exception as e:
+            st.error(f"API Error: {e}")
+
+elif search_clicked and not query:
+    st.warning("Please enter a discrepancy.")
