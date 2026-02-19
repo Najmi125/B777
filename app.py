@@ -2,20 +2,44 @@ import streamlit as st
 import os
 import json
 import faiss
+import tempfile
+import whisper
 from sentence_transformers import SentenceTransformer
 from groq import Groq
 
 # ---------------- 1. CONFIGURATION ----------------
 st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon="✈️")
 
-# --- CSS STYLES ---
+# --- CSS STYLES (UI FIXES) ---
 hide_st_style = """
             <style>
+            /* 1. Hide Hamburger Menu */
             #MainMenu {visibility: hidden;}
+            
+            /* 2. Hide "Made with Streamlit" Footer */
             footer {visibility: hidden;}
+            
+            /* 3. Hide Top Header Decoration */
             header {visibility: hidden;}
             
-            /* Hide the 'Press Enter to apply' hint */
+            /* 4. Hide The Profile/Toolbar (Right Bottom/Top) */
+            div[data-testid="stToolbar"] {
+                visibility: hidden;
+                height: 0%;
+                position: fixed;
+            }
+            div[data-testid="stDecoration"] {
+                visibility: hidden;
+                height: 0%;
+                position: fixed;
+            }
+            div[data-testid="stStatusWidget"] {
+                visibility: hidden;
+                height: 0%;
+                position: fixed;
+            }
+
+            /* 5. Hide the 'Press Enter to apply' hint on text boxes */
             .stTextInput > div > div > span {
                 display: none;
             }
@@ -39,10 +63,12 @@ if 'processed' not in st.session_state:
 if 'query_input' not in st.session_state:
     st.session_state.query_input = ""
 
-# --- CALLBACK TO FIX CLEAR BUTTON ERROR ---
+# --- CALLBACK TO CLEAR TEXT ---
 def clear_text():
     st.session_state.query_input = ""
     st.session_state.processed = False
+    if 'last_audio_id' in st.session_state:
+        del st.session_state.last_audio_id
 
 # ---------------- 2. PROMPTS ----------------
 SYSTEM_PROMPT = """You are a Boeing 777 technical analyzer.
@@ -70,6 +96,10 @@ def load_backend():
     client = Groq(api_key=api_key)
     return embed_model, index, metadatas, client
 
+@st.cache_resource
+def load_whisper():
+    return whisper.load_model("base")
+
 def build_candidates_string(results):
     blocks = []
     for i, item in enumerate(results):
@@ -95,10 +125,9 @@ st.title("✈️ B777 DDG Assistant")
 
 st.markdown("""
 Find quick reference to DDG item/page.
-DDG page text shows best three [OPTION]s
 
 **CAUTION**: For more accurate results, input text should be as close to DDG language as possible.  
-try different wordings if wrong answer.
+*e.g. FCAC Flow Regulating Valve | Autothrottle Servo Motors*
 
 **NOTE**: This is a prototype app for limited use.  
 If slow or error msgs such as 'Rate limit',  
@@ -107,23 +136,56 @@ please WhatsApp +92 337 1244809.
 
 embed_model, index, metadatas, client = load_backend()
 
-# Input Box
-query = st.text_input("Enter Discrepancy:", 
-                      placeholder="e.g. Forward cargo air conditioning exhaust fan inoperative",
-                      key="query_input")
+# --- INPUT SECTION (TEXT + VOICE) ---
+col_input, col_voice = st.columns([85, 15])
 
+with col_voice:
+    # Voice Upload Button (Small microphone)
+    audio_file = st.file_uploader("🎤", type=["wav", "mp3", "m4a"], label_visibility="collapsed")
+
+# --- VOICE PROCESSING LOGIC ---
+if audio_file is not None:
+    current_file_id = audio_file.file_id if hasattr(audio_file, 'file_id') else audio_file.name
+    
+    if 'last_audio_id' not in st.session_state or st.session_state.last_audio_id != current_file_id:
+        with st.spinner("🎧 Transcribing Audio..."):
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    tmp.write(audio_file.read())
+                    tmp_path = tmp.name
+                
+                whisper_model = load_whisper()
+                result = whisper_model.transcribe(tmp_path)
+                transcribed_text = result["text"]
+                os.remove(tmp_path) 
+
+                st.session_state.query_input = transcribed_text
+                st.session_state.last_audio_id = current_file_id
+                st.rerun()
+            except Exception as e:
+                st.error(f"Audio Error: {e}")
+
+with col_input:
+    query = st.text_input("Enter Discrepancy:", 
+                          value=st.session_state.query_input,
+                          placeholder="e.g. Forward cargo air conditioning exhaust fan inoperative",
+                          key="text_entry_box")
+
+if query != st.session_state.query_input:
+    st.session_state.query_input = query
+
+# --- BUTTONS ---
 col1, col2 = st.columns([1, 1])
 with col1:
     search_clicked = st.button("click to search DDG", type="primary", use_container_width=True)
 with col2:
-    # Callback handles clearing safely
     st.button("Clear", use_container_width=True, on_click=clear_text)
 
-if search_clicked and query:
+# --- SEARCH LOGIC ---
+if search_clicked and st.session_state.query_input:
     with st.spinner("Searching DDG..."):
         # 1. Search Logic
-        q_emb = embed_model.encode([query], normalize_embeddings=True)
-        # We fetch 6 candidates for the AI to judge
+        q_emb = embed_model.encode([st.session_state.query_input], normalize_embeddings=True)
         scores, indices = index.search(q_emb, k=6) 
         results = [metadatas[idx] for idx in indices[0]]
         
@@ -131,7 +193,7 @@ if search_clicked and query:
         candidates_text = build_candidates_string(results)
 
         # 3. Ask AI to pick the winner
-        USER_PROMPT = f"""Pilot discrepancy: "{query}"
+        USER_PROMPT = f"""Pilot discrepancy: "{st.session_state.query_input}"
 
 Analyze these 6 candidates. Which one matches the technical details (e.g. Pressure vs Temp) best?
 Return ONLY the JSON with the best_index.
@@ -157,13 +219,13 @@ Return ONLY the JSON with the best_index.
             if best_index < 0 or best_index >= len(results):
                 best_index = 0
             
-            # 5. Extract Best Match Data
+            # 5. Extract Data
             selected_item = results[best_index]
             ddg_num = selected_item.get('item_full', 'N/A')
             ata_num = selected_item.get('ata', 'N/A')
             mel_num = get_mel_string(ddg_num)
             
-            # 6. Display References (AI Selection)
+            # 6. Display Output
             st.markdown("### ✅ Dispatch Guidance")
             
             st.markdown(f"""
@@ -173,16 +235,12 @@ Return ONLY the JSON with the best_index.
 * MEL Item: {mel_num}
 """)
             
-            # 7. Display RAW Text (Top 3 Options)
             st.markdown("## DDG page text")
             
-            # Loop through the top 3 results from FAISS
-            # The one selected by AI might be Option 1, 2, or 3.
+            # Loop through the top 3 results
             for i in range(min(3, len(results))):
                 item = results[i]
                 raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING IN JSON]]"
-                
-                # Highlight if this was the AI's choice
                 match_label = " (AI SELECTED MATCH)" if i == best_index else ""
                 
                 st.markdown(f"**[OPTION {i+1}] - {item.get('item_full', 'N/A')}{match_label}**")
@@ -194,6 +252,5 @@ Return ONLY the JSON with the best_index.
         except Exception as e:
             st.error(f"API Error: {e}")
 
-elif search_clicked and not query:
+elif search_clicked and not st.session_state.query_input:
     st.warning("Please enter a discrepancy.")
-
