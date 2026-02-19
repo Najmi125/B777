@@ -11,33 +11,34 @@ st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon
 # --- CSS STYLES (UI FIXES) ---
 hide_st_style = """
             <style>
-            /* 1. Hide Hamburger Menu */
-            #MainMenu {visibility: hidden;}
+            /* Hides the top right menu */
+            [data-testid="stMainMenu"] {visibility: hidden;}
             
-            /* 2. Hide "Made with Streamlit" Footer */
+            /* Hides the "Made with Streamlit" footer */
             footer {visibility: hidden;}
             
-            /* 3. Hide Top Header Decoration */
+            /* Hides the Header */
             header {visibility: hidden;}
             
-            /* 4. CRITICAL: Hide The Profile/Toolbar (Right Bottom) */
-            div[data-testid="stToolbar"] {
-                visibility: hidden;
-                height: 0%;
-                position: fixed;
+            /* AGGRESSIVELY HIDE TOOLBAR */
+            [data-testid="stToolbar"] {
+                display: none !important;
+                visibility: hidden !important;
             }
-            div[data-testid="stDecoration"] {
-                visibility: hidden;
-                height: 0%;
-                position: fixed;
+            
+            /* Hides the decoration line at the top */
+            [data-testid="stDecoration"] {
+                display: none !important;
+                visibility: hidden !important;
             }
-            div[data-testid="stStatusWidget"] {
-                visibility: hidden;
-                height: 0%;
-                position: fixed;
+            
+            /* Hides the 'Running' status widget */
+            [data-testid="stStatusWidget"] {
+                display: none !important;
+                visibility: hidden !important;
             }
 
-            /* 5. Hide the 'Press Enter to apply' hint */
+            /* Hides the 'Press Enter to apply' hint */
             .stTextInput > div > div > span {
                 display: none;
             }
@@ -214,4 +215,5 @@ Return ONLY the JSON with the best_index.
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
 
