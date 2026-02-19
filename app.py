@@ -2,8 +2,6 @@ import streamlit as st
 import os
 import json
 import faiss
-import tempfile
-import whisper
 from sentence_transformers import SentenceTransformer
 from groq import Groq
 
@@ -67,8 +65,6 @@ if 'query_input' not in st.session_state:
 def clear_text():
     st.session_state.query_input = ""
     st.session_state.processed = False
-    if 'last_audio_id' in st.session_state:
-        del st.session_state.last_audio_id
 
 # ---------------- 2. PROMPTS ----------------
 SYSTEM_PROMPT = """You are a Boeing 777 technical analyzer.
@@ -95,10 +91,6 @@ def load_backend():
     
     client = Groq(api_key=api_key)
     return embed_model, index, metadatas, client
-
-@st.cache_resource
-def load_whisper():
-    return whisper.load_model("base")
 
 def build_candidates_string(results):
     blocks = []
@@ -136,45 +128,11 @@ please WhatsApp +92 337 1244809.
 
 embed_model, index, metadatas, client = load_backend()
 
-# --- INPUT SECTION (TEXT + VOICE) ---
-col_input, col_voice = st.columns([85, 15])
+# Input Box
+query = st.text_input("Enter Discrepancy:", 
+                      placeholder="e.g. Forward cargo air conditioning exhaust fan inoperative",
+                      key="query_input")
 
-with col_voice:
-    # Voice Upload Button (Small microphone)
-    audio_file = st.file_uploader("🎤", type=["wav", "mp3", "m4a"], label_visibility="collapsed")
-
-# --- VOICE PROCESSING LOGIC ---
-if audio_file is not None:
-    current_file_id = audio_file.file_id if hasattr(audio_file, 'file_id') else audio_file.name
-    
-    if 'last_audio_id' not in st.session_state or st.session_state.last_audio_id != current_file_id:
-        with st.spinner("🎧 Transcribing Audio..."):
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-                    tmp.write(audio_file.read())
-                    tmp_path = tmp.name
-                
-                whisper_model = load_whisper()
-                result = whisper_model.transcribe(tmp_path)
-                transcribed_text = result["text"]
-                os.remove(tmp_path) 
-
-                st.session_state.query_input = transcribed_text
-                st.session_state.last_audio_id = current_file_id
-                st.rerun()
-            except Exception as e:
-                st.error(f"Audio Error: {e}")
-
-with col_input:
-    query = st.text_input("Enter Discrepancy:", 
-                          value=st.session_state.query_input,
-                          placeholder="e.g. Forward cargo air conditioning exhaust fan inoperative",
-                          key="text_entry_box")
-
-if query != st.session_state.query_input:
-    st.session_state.query_input = query
-
-# --- BUTTONS ---
 col1, col2 = st.columns([1, 1])
 with col1:
     search_clicked = st.button("click to search DDG", type="primary", use_container_width=True)
@@ -182,10 +140,10 @@ with col2:
     st.button("Clear", use_container_width=True, on_click=clear_text)
 
 # --- SEARCH LOGIC ---
-if search_clicked and st.session_state.query_input:
+if search_clicked and query:
     with st.spinner("Searching DDG..."):
         # 1. Search Logic
-        q_emb = embed_model.encode([st.session_state.query_input], normalize_embeddings=True)
+        q_emb = embed_model.encode([query], normalize_embeddings=True)
         scores, indices = index.search(q_emb, k=6) 
         results = [metadatas[idx] for idx in indices[0]]
         
@@ -193,7 +151,7 @@ if search_clicked and st.session_state.query_input:
         candidates_text = build_candidates_string(results)
 
         # 3. Ask AI to pick the winner
-        USER_PROMPT = f"""Pilot discrepancy: "{st.session_state.query_input}"
+        USER_PROMPT = f"""Pilot discrepancy: "{query}"
 
 Analyze these 6 candidates. Which one matches the technical details (e.g. Pressure vs Temp) best?
 Return ONLY the JSON with the best_index.
@@ -217,40 +175,3 @@ Return ONLY the JSON with the best_index.
             response_data = json.loads(completion.choices[0].message.content)
             best_index = int(response_data.get("best_index", 0))
             if best_index < 0 or best_index >= len(results):
-                best_index = 0
-            
-            # 5. Extract Data
-            selected_item = results[best_index]
-            ddg_num = selected_item.get('item_full', 'N/A')
-            ata_num = selected_item.get('ata', 'N/A')
-            mel_num = get_mel_string(ddg_num)
-            
-            # 6. Display Output
-            st.markdown("### ✅ Dispatch Guidance")
-            
-            st.markdown(f"""
-**REFERENCES:**
-* DDG Item: {ddg_num}
-* ATA: {ata_num}
-* MEL Item: {mel_num}
-""")
-            
-            st.markdown("## DDG page text")
-            
-            # Loop through the top 3 results
-            for i in range(min(3, len(results))):
-                item = results[i]
-                raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING IN JSON]]"
-                match_label = " (AI SELECTED MATCH)" if i == best_index else ""
-                
-                st.markdown(f"**[OPTION {i+1}] - {item.get('item_full', 'N/A')}{match_label}**")
-                st.text(raw_text)
-                st.markdown("---")
-            
-            st.session_state.processed = True
-            
-        except Exception as e:
-            st.error(f"API Error: {e}")
-
-elif search_clicked and not st.session_state.query_input:
-    st.warning("Please enter a discrepancy.")
