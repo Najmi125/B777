@@ -20,7 +20,7 @@ hide_st_style = """
             /* 3. Hide Top Header Decoration */
             header {visibility: hidden;}
             
-            /* 4. Hide The Profile/Toolbar (Right Bottom/Top) */
+            /* 4. CRITICAL: Hide The Profile/Toolbar (Right Bottom) */
             div[data-testid="stToolbar"] {
                 visibility: hidden;
                 height: 0%;
@@ -37,7 +37,7 @@ hide_st_style = """
                 position: fixed;
             }
 
-            /* 5. Hide the 'Press Enter to apply' hint on text boxes */
+            /* 5. Hide the 'Press Enter to apply' hint */
             .stTextInput > div > div > span {
                 display: none;
             }
@@ -214,3 +214,4 @@ Return ONLY the JSON with the best_index.
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
+
