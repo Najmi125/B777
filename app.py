@@ -11,34 +11,26 @@ st.set_page_config(page_title="B777 DDG Assistant", layout="centered", page_icon
 # --- CSS STYLES (UI FIXES) ---
 hide_st_style = """
             <style>
-            /* Hides the top right menu */
-            [data-testid="stMainMenu"] {visibility: hidden;}
+            /* 1. Hide Top Menu */
+            #MainMenu {visibility: hidden;}
             
-            /* Hides the "Made with Streamlit" footer */
+            /* 2. Hide Footer */
             footer {visibility: hidden;}
             
-            /* Hides the Header */
+            /* 3. Hide Header */
             header {visibility: hidden;}
             
-            /* AGGRESSIVELY HIDE TOOLBAR */
+            /* 4. Hide Toolbar */
             [data-testid="stToolbar"] {
                 display: none !important;
-                visibility: hidden !important;
             }
             
-            /* Hides the decoration line at the top */
-            [data-testid="stDecoration"] {
-                display: none !important;
-                visibility: hidden !important;
-            }
-            
-            /* Hides the 'Running' status widget */
+            /* 5. Hide 'Running' Animation */
             [data-testid="stStatusWidget"] {
-                display: none !important;
-                visibility: hidden !important;
+                visibility: hidden;
             }
 
-            /* Hides the 'Press Enter to apply' hint */
+            /* 6. Hide 'Press Enter to apply' hint */
             .stTextInput > div > div > span {
                 display: none;
             }
@@ -117,8 +109,7 @@ def get_mel_string(ddg_item):
 st.title("✈️ B777 DDG Assistant")
 
 st.markdown("""
-Find quick reference to DDG item/page.
-
+Find quick reference to DDG item. Click to open page.
 **CAUTION**: For more accurate results, input text should be as close to DDG language as possible.  
 *e.g. FCAC Flow Regulating Valve | Autothrottle Servo Motors*
 
@@ -175,38 +166,44 @@ Return ONLY the JSON with the best_index.
             # 4. Parse AI Response
             response_data = json.loads(completion.choices[0].message.content)
             best_index = int(response_data.get("best_index", 0))
-            
-            # FIX: Properly indented safety check
             if best_index < 0 or best_index >= len(results):
                 best_index = 0
             
-            # 5. Extract Data
+            # 5. Extract Data (Best Match)
             selected_item = results[best_index]
             ddg_num = selected_item.get('item_full', 'N/A')
             ata_num = selected_item.get('ata', 'N/A')
             mel_num = get_mel_string(ddg_num)
             
-            # 6. Display Output
+            # 6. Display Output (Clean References)
             st.markdown("### ✅ Dispatch Guidance")
             
-            st.markdown(f"""
-**REFERENCES:**
-* DDG Item: {ddg_num}
-* ATA: {ata_num}
-* MEL Item: {mel_num}
+            st.info(f"""
+**DDG Item:** {ddg_num}  
+**ATA:** {ata_num}  
+**MEL Item:** {mel_num}
 """)
             
-            st.markdown("## DDG page text")
-            
-            # Loop through the top 3 results
+            st.write("---")
+            st.caption("Click below to view original manual text:")
+
+            # 7. Loop through Top 3 Results (Click to Open)
+            # This puts the text inside clickable expanders
             for i in range(min(3, len(results))):
                 item = results[i]
-                raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING IN JSON]]"
-                match_label = " (AI SELECTED MATCH)" if i == best_index else ""
                 
-                st.markdown(f"**[OPTION {i+1}] - {item.get('item_full', 'N/A')}{match_label}**")
-                st.text(raw_text)
-                st.markdown("---")
+                # Determine Label
+                is_best = (i == best_index)
+                icon = "⭐" if is_best else "📄"
+                label_text = f"{icon} View DDG {item.get('item_full', 'N/A')} (Option {i+1})"
+                
+                if is_best:
+                    label_text += " - BEST MATCH"
+
+                # The Expander
+                with st.expander(label_text, expanded=is_best):
+                    raw_text = item.get('text') or item.get('content') or "[[TEXT MISSING IN JSON]]"
+                    st.text(raw_text)
             
             st.session_state.processed = True
             
@@ -215,5 +212,3 @@ Return ONLY the JSON with the best_index.
 
 elif search_clicked and not query:
     st.warning("Please enter a discrepancy.")
-
-
