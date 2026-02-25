@@ -78,15 +78,19 @@ def load_backend():
 def build_candidates_string(results):
     blocks = []
     for i, item in enumerate(results):
+        # Fallback if 'item_full' is missing
+        item_ref = item.get('item_full') or item.get('item') or "Unknown"
         block = f"""
 [INDEX {i}]
-Item: {item.get('item_full', 'N/A')}
+Item: {item_ref}
 Title: {item.get('title', 'N/A')}
 """
         blocks.append(block)
     return "\n".join(blocks)
 
 def get_mel_string(ddg_item):
+    if not ddg_item or ddg_item == "N/A":
+        return "N/A"
     try:
         parts = ddg_item.split('.')
         if len(parts) >= 3:
@@ -160,10 +164,13 @@ Return ONLY the JSON with the best_index.
             if best_index < 0 or best_index >= len(results):
                 best_index = 0
             
-            # 5. Extract Best Match Data
+            # 5. Extract Best Match Data (With Safety Net)
             selected_item = results[best_index]
-            ddg_num = selected_item.get('item_full', 'N/A')
-            ata_num = selected_item.get('ata', 'N/A')
+            
+            # TRY MULTIPLE KEYS if "item_full" is missing
+            ddg_num = selected_item.get('item_full') or selected_item.get('item') or selected_item.get('Item') or "N/A"
+            ata_num = selected_item.get('ata') or selected_item.get('ATA') or "N/A"
+            
             mel_num = get_mel_string(ddg_num)
             
             # Get Raw Text
@@ -172,7 +179,7 @@ Return ONLY the JSON with the best_index.
             # 6. Display Output
             st.markdown("### ✅ Dispatch Guidance")
             
-            # Simple Output as requested
+            # The Info Box
             st.write(f"**DDG Item:** {ddg_num}")
             st.write(f"**MEL Item:** {mel_num}")
             
@@ -180,6 +187,13 @@ Return ONLY the JSON with the best_index.
             st.text(raw_text)
             
             st.session_state.processed = True
+
+            # 7. DEBUG HELPER (Only if N/A appears, open this to see why)
+            if ddg_num == "N/A":
+                with st.expander("⚠️ Debug Data (Click if Result is N/A)"):
+                    st.write("We found the data, but the keys didn't match.")
+                    st.write("Here are the keys available in your JSON file:")
+                    st.write(selected_item)
             
         except Exception as e:
             st.error(f"API Error: {e}")
