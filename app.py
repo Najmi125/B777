@@ -68,20 +68,38 @@ def load_backend():
 def build_candidates_string(results):
     blocks = []
     for i, item in enumerate(results):
-        # Dump all values to help AI guess
-        info = " | ".join([f"{k}: {v}" for k, v in item.items() if isinstance(v, str)])
-        block = f"[INDEX {i}] Data: {info[:300]}..." 
+        # Using 'page_ref' based on your JSON structure
+        ref = item.get('page_ref', 'N/A')
+        text_preview = item.get('text', '')[:100].replace('\n', ' ')
+        
+        block = f"""
+[INDEX {i}]
+Ref: {ref}
+Snippet: {text_preview}...
+"""
         blocks.append(block)
     return "\n".join(blocks)
 
 def get_mel_string(ddg_item):
     if not ddg_item or ddg_item == "N/A": return "N/A"
     try:
+        # Input: 2.73-21-08.3  => Output: 73-21-08
         parts = ddg_item.split('.')
-        if len(parts) >= 3: return parts[1] 
+        if len(parts) >= 2:
+            return parts[1] 
         return ddg_item
     except:
         return ddg_item
+
+def get_ata_string(ddg_item):
+    if not ddg_item or ddg_item == "N/A": return "N/A"
+    try:
+        # Input: 2.73-21-08.3 => Output: 73
+        middle = ddg_item.split('.')[1] # 73-21-08
+        ata = middle.split('-')[0] # 73
+        return ata
+    except:
+        return "N/A"
 
 # ---------------- 4. UI LOGIC ----------------
 st.title("✈️ B777 DDG Assistant")
@@ -140,24 +158,26 @@ Return ONLY JSON: {{"best_index": <int>}}
             
             selected_item = results[best_index]
             
-            # --- ⚠️ DIAGNOSTIC SECTION ---
-            # Try to grab keys blindly
-            ddg_num = selected_item.get('item_full') or selected_item.get('item') or selected_item.get('Item') or "N/A"
+            # --- CORRECT DATA MAPPING ---
+            # We map 'page_ref' to ddg_num
+            ddg_num = selected_item.get('page_ref', 'N/A')
+            
+            # We calculate MEL and ATA from the DDG number
             mel_num = get_mel_string(ddg_num)
-            raw_text = selected_item.get('text') or selected_item.get('content') or "[[TEXT MISSING]]"
+            ata_num = get_ata_string(ddg_num)
+            
+            # We get text from 'text'
+            raw_text = selected_item.get('text', "[[TEXT MISSING IN JSON]]")
 
+            # --- DISPLAY ---
             st.markdown("### ✅ Dispatch Guidance")
             
-            # If N/A, we show the X-RAY
-            if ddg_num == "N/A":
-                st.warning("⚠️ DATA NAME MISMATCH DETECTED")
-                st.info("Please copy the data inside this yellow box and send it to your developer:")
-                st.json(selected_item) # <--- THIS IS THE X-RAY
-            else:
-                st.write(f"**DDG Item:** {ddg_num}")
-                st.write(f"**MEL Item:** {mel_num}")
-                st.markdown("### DDG page text")
-                st.text(raw_text)
+            st.write(f"**DDG Item:** {ddg_num}")
+            st.write(f"**ATA:** {ata_num}")
+            st.write(f"**MEL Item:** {mel_num}")
+            
+            st.markdown("### DDG page text")
+            st.text(raw_text)
             
             st.session_state.processed = True
             
